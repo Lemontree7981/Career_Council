@@ -70,7 +70,7 @@ class DatabaseManager:
             raise Exception(f"Error loading exam types: {e}")
 
     def search_colleges(self, exam_name: str, field: str, category: str,
-                       score: float, budget: Optional[float] = None) -> List[College]:
+            score: float, budget: Optional[float] = None) -> List[College]:
         """Search for colleges based on given criteria."""
         try:
             conn = sqlite3.connect(self.db_path)
