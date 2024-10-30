@@ -49,7 +49,7 @@ Career Council is a powerful career counseling application designed to simplify 
 
 3. Launch the application:
    ```bash
-   python main.py
+   python launcher.py
    ```
 
 ## 💡 Usage
