@@ -5,6 +5,7 @@ from ttkbootstrap.constants import *
 from ttkbootstrap.scrolled import ScrolledFrame
 from database_operations import DatabaseManager, College
 import sqlite3
+import sys
 
 class CollegeManagerGUI:
     def __init__(self):
@@ -549,7 +550,12 @@ class CollegeManagerGUI:
     def run(self):
         """Start the application."""
         self.root.mainloop()
-
-if __name__ == "__main__":
+def main():
+    if len(sys.argv) != 2:
+        print("Access Denied: Please launch through the main app.")
+        return
+    token = sys.argv[1]
     app = CollegeManagerGUI()
     app.run()
+if __name__ == "__main__":
+    main()

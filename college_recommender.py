@@ -4,7 +4,7 @@ import ttkbootstrap as ttk
 from ttkbootstrap.constants import *
 from ttkbootstrap.scrolled import ScrolledFrame
 from database_operations import DatabaseManager, College
-
+import sys
 class CollegeRecommenderGUI:
     def __init__(self):
         self.root = ttk.Window(themename="cosmo")
@@ -250,6 +250,10 @@ class CollegeRecommenderGUI:
 
 
 def main():
+    if len(sys.argv) != 2:
+        print("Access Denied: Please launch through the main app.")
+        return
+    token = sys.argv[1]
     app = CollegeRecommenderGUI()
     app.root.mainloop()
 
