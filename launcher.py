@@ -17,7 +17,7 @@ def open_admin():
 def open_user():
     root.destroy()
     token = secrets.token_hex(16)
-    subprocess.run(["python", "main.py", token])
+    subprocess.run(["python", "college_recommender.py", token])
 
 def toggle_password():
     if password_entry.cget('show') == '*':
