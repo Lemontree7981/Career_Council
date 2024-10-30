@@ -11,7 +11,9 @@ class CollegeManagerGUI:
         self.root = ttk.Window(themename="cosmo")
         self.root.title("College Database Manager")
         self.root.geometry("1000x800")
-
+        self.search_var = tk.StringVar()
+        self.search_field_var = tk.StringVar(value="All Fields")
+        self.sort_var = tk.StringVar(value="Name (A-Z)")
         self.db_manager = DatabaseManager('career_counseling.db')
 
         # Main container
@@ -21,8 +23,130 @@ class CollegeManagerGUI:
         # Create the interface sections
         self.create_header()
         self.create_add_college_form()
+        self.create_search_bar()
         self.create_college_list()
         self.load_colleges()
+
+
+
+    def create_search_bar(self):
+        """Create the search bar section."""
+        search_frame = ttk.Frame(self.main_container)
+        search_frame.pack(fill=tk.X, pady=(0, 10))
+
+        # Search entry
+
+        self.search_var.trace('w', lambda name, index, mode: self.on_search())
+
+        search_entry = ttk.Entry(
+            search_frame,
+            textvariable=self.search_var,
+            width=40,
+        )
+        search_entry.pack(side=tk.LEFT, padx=(0, 10))
+
+        # Search filters
+        self.search_field_var = tk.StringVar(value="All Fields")
+        field_filter = ttk.Combobox(
+            search_frame,
+            textvariable=self.search_field_var,
+            values=["All Fields", "Engineering", "Medicine", "Architecture"],
+            state="readonly",
+            width=15
+        )
+        field_filter.pack(side=tk.LEFT, padx=(0, 10))
+        field_filter.bind('<<ComboboxSelected>>', lambda e: self.on_search())
+
+        # Sort options
+
+        sort_combobox = ttk.Combobox(
+            search_frame,
+            textvariable=self.sort_var,
+            values=["Name (A-Z)", "Name (Z-A)", "Location (A-Z)", "Fee (Low-High)", "Fee (High-Low)"],
+            state="readonly",
+            width=15
+        )
+        sort_combobox.pack(side=tk.LEFT)
+        sort_combobox.bind('<<ComboboxSelected>>', lambda e: self.on_search())
+
+    def on_search(self):
+        """Handle search and filtering of colleges."""
+        search_term = self.search_var.get().lower()
+        field_filter = self.search_field_var.get()
+        sort_option = self.sort_var.get()
+
+        try:
+            conn = sqlite3.connect('career_counseling.db')
+            cursor = conn.cursor()
+
+            # Build the query based on search and filter criteria
+            query = """
+                   SELECT 
+                       c.CollegeID,
+                       c.CollegeName,
+                       c.Location,
+                       c.Field,
+                       c.TuitionFee
+                   FROM Colleges c
+                   WHERE 1=1
+               """
+            params = []
+
+            if search_term:
+                query += """ AND (
+                       LOWER(c.CollegeName) LIKE ? OR
+                       LOWER(c.Location) LIKE ? OR
+                       LOWER(c.Field) LIKE ?
+                   )"""
+                search_pattern = f"%{search_term}%"
+                params.extend([search_pattern, search_pattern, search_pattern])
+
+            if field_filter != "All Fields":
+                query += " AND c.Field = ?"
+                params.append(field_filter)
+
+            # Add sorting
+            if sort_option == "Name (A-Z)":
+                query += " ORDER BY c.CollegeName ASC"
+            elif sort_option == "Name (Z-A)":
+                query += " ORDER BY c.CollegeName DESC"
+            elif sort_option == "Location (A-Z)":
+                query += " ORDER BY c.Location ASC"
+            elif sort_option == "Fee (Low-High)":
+                query += " ORDER BY c.TuitionFee ASC"
+            elif sort_option == "Fee (High-Low)":
+                query += " ORDER BY c.TuitionFee DESC"
+
+            cursor.execute(query, params)
+            colleges = cursor.fetchall()
+            conn.close()
+
+            # Clear existing college cards
+            for widget in self.scrolled_frame.winfo_children():
+                widget.destroy()
+
+            # Create cards for filtered colleges
+            for college in colleges:
+                self.create_college_card(college)
+
+            if not colleges:
+                no_results = ttk.Label(
+                    self.scrolled_frame,
+                    text="No colleges found matching your search criteria",
+                    font=("Helvetica", 12),
+                    foreground="gray"
+                )
+                no_results.pack(pady=20)
+
+        except sqlite3.Error as e:
+            messagebox.showerror("Database Error", f"Error searching colleges: {e}")
+
+    def load_colleges(self):
+        """Load and display existing colleges."""
+        self.search_var.set("")  # Clear search
+        self.search_field_var.set("All Fields")  # Reset field filter
+        self.sort_var.set("Name (A-Z)")  # Reset sort
+        self.on_search()  # Use the search function t
 
     def create_header(self):
         """Create the application header."""
@@ -192,34 +316,6 @@ class CollegeManagerGUI:
             messagebox.showerror("Database Error", f"Error loading exams: {e}")
             return []
 
-    def load_colleges(self):
-        """Load and display existing colleges."""
-        for widget in self.scrolled_frame.winfo_children():
-            widget.destroy()
-
-        try:
-            conn = sqlite3.connect('career_counseling.db')
-            cursor = conn.cursor()
-
-            cursor.execute("""
-                SELECT 
-                    c.CollegeID,
-                    c.CollegeName,
-                    c.Location,
-                    c.Field,
-                    c.TuitionFee
-                FROM Colleges c
-                ORDER BY c.CollegeName
-            """)
-
-            colleges = cursor.fetchall()
-            conn.close()
-
-            for college in colleges:
-                self.create_college_card(college)
-
-        except sqlite3.Error as e:
-            messagebox.showerror("Database Error", f"Error loading colleges: {e}")
 
     def create_college_card(self, college_data):
         """Create a display card for a college."""
