@@ -1,3 +1,4 @@
+import logging
 import tkinter as tk
 from tkinter import ttk, messagebox
 import ttkbootstrap as ttk
@@ -5,13 +6,23 @@ from ttkbootstrap.constants import *
 from ttkbootstrap.scrolled import ScrolledFrame
 from database_operations import DatabaseManager, College
 import sys
+from typing import Optional
+from decimal import Decimal
+import re
+
+
 class CollegeRecommenderGUI:
     def __init__(self):
         self.root = ttk.Window(themename="cosmo")
         self.root.title("College Recommender System")
         self.root.geometry("900x700")
+        self.root.minsize(800, 600)
 
         self.db_manager = DatabaseManager('career_counseling.db')
+
+        # Add state variables for form validation
+        self.form_valid = False
+        self.validation_errors = []
 
         self.main_container = ttk.Frame(self.root, padding="20")
         self.main_container.pack(fill=tk.BOTH, expand=True)
@@ -19,10 +30,24 @@ class CollegeRecommenderGUI:
         self.create_header()
         self.create_input_form()
         self.create_results_area()
+        self.create_status_bar()
         self.populate_exam_types()
 
+        # Bind validation to form inputs
+        self.score_var.trace_add('write', self.validate_form)
+        self.budget_var.trace_add('write', self.validate_form)
+
+        # Add keyboard shortcuts
+        self.root.bind('<Return>', lambda e: self.search_colleges())
+        self.root.bind('<Escape>', lambda e: self.clear_form())
+        logging.basicConfig(level=logging.DEBUG)
+        self.logger = logging.getLogger(__name__)
+
+        # Initialize search button in disabled state
+        self.search_button.configure(state="disabled")
+
     def create_header(self):
-        """Create the application header."""
+        """Create the application header with improved styling."""
         header_frame = ttk.Frame(self.main_container)
         header_frame.pack(fill=tk.X, pady=(0, 20))
 
@@ -41,7 +66,7 @@ class CollegeRecommenderGUI:
         subtitle.pack()
 
     def create_input_form(self):
-        """Create the input form section."""
+        """Create the input form section with improved layout and validation."""
         self.form_frame = ttk.LabelFrame(
             self.main_container,
             text="Enter Your Details",
@@ -49,84 +74,101 @@ class CollegeRecommenderGUI:
         )
         self.form_frame.pack(fill=tk.X, pady=(0, 20))
 
-        exam_frame = ttk.Frame(self.form_frame)
-        exam_frame.pack(fill=tk.X, pady=(0, 10))
+        # Create grid layout for better alignment
+        current_row = 0
 
-        ttk.Label(exam_frame, text="Select Exam:").pack(side=tk.LEFT)
+        # Exam selection
+        ttk.Label(self.form_frame, text="Select Exam:").grid(row=current_row, column=0, sticky='w', pady=5)
         self.exam_var = tk.StringVar()
         self.exam_combobox = ttk.Combobox(
-            exam_frame,
+            self.form_frame,
             textvariable=self.exam_var,
             state="readonly",
             width=30
         )
-        self.exam_combobox.pack(side=tk.LEFT, padx=(10, 0))
+        self.exam_combobox.grid(row=current_row, column=1, sticky='w', padx=(10, 0), pady=5)
+        current_row += 1
 
-        score_frame = ttk.Frame(self.form_frame)
-        score_frame.pack(fill=tk.X, pady=(0, 10))
-
-        ttk.Label(score_frame, text="Your Score:").pack(side=tk.LEFT)
+        # Score entry with validation
+        ttk.Label(self.form_frame, text="Your Score:").grid(row=current_row, column=0, sticky='w', pady=5)
         self.score_var = tk.StringVar()
-        score_entry = ttk.Entry(
-            score_frame,
+        self.score_entry = ttk.Entry(
+            self.form_frame,
             textvariable=self.score_var,
             width=32
         )
-        score_entry.pack(side=tk.LEFT, padx=(10, 0))
+        self.score_entry.grid(row=current_row, column=1, sticky='w', padx=(10, 0), pady=5)
+        current_row += 1
 
-        category_frame = ttk.Frame(self.form_frame)
-        category_frame.pack(fill=tk.X, pady=(0, 10))
-
-        ttk.Label(category_frame, text="Category:").pack(side=tk.LEFT)
+        # Category selection
+        ttk.Label(self.form_frame, text="Category:").grid(row=current_row, column=0, sticky='w', pady=5)
         self.category_var = tk.StringVar(value="General")
         categories = ["General", "OBC", "SC", "ST"]
         self.category_combobox = ttk.Combobox(
-            category_frame,
+            self.form_frame,
             textvariable=self.category_var,
             values=categories,
             state="readonly",
             width=30
         )
-        self.category_combobox.pack(side=tk.LEFT, padx=(10, 0))
+        self.category_combobox.grid(row=current_row, column=1, sticky='w', padx=(10, 0), pady=5)
+        current_row += 1
 
-        field_frame = ttk.Frame(self.form_frame)
-        field_frame.pack(fill=tk.X, pady=(0, 10))
-
-        ttk.Label(field_frame, text="Field:").pack(side=tk.LEFT)
+        # Field selection
+        ttk.Label(self.form_frame, text="Field:").grid(row=current_row, column=0, sticky='w', pady=5)
         self.field_var = tk.StringVar(value="Engineering")
         fields = ["Engineering", "Medicine", "Architecture"]
         self.field_combobox = ttk.Combobox(
-            field_frame,
+            self.form_frame,
             textvariable=self.field_var,
             values=fields,
             state="readonly",
             width=30
         )
-        self.field_combobox.pack(side=tk.LEFT, padx=(10, 0))
+        self.field_combobox.grid(row=current_row, column=1, sticky='w', padx=(10, 0), pady=5)
+        current_row += 1
 
-        budget_frame = ttk.Frame(self.form_frame)
-        budget_frame.pack(fill=tk.X, pady=(0, 10))
-
-        ttk.Label(budget_frame, text="Max Budget (₹):").pack(side=tk.LEFT)
+        # Budget entry with validation
+        ttk.Label(self.form_frame, text="Max Budget (₹):").grid(row=current_row, column=0, sticky='w', pady=5)
         self.budget_var = tk.StringVar()
-        budget_entry = ttk.Entry(
-            budget_frame,
+        self.budget_entry = ttk.Entry(
+            self.form_frame,
             textvariable=self.budget_var,
             width=32
         )
-        budget_entry.pack(side=tk.LEFT, padx=(10, 0))
+        self.budget_entry.grid(row=current_row, column=1, sticky='w', padx=(10, 0), pady=5)
+        current_row += 1
+
+        # Buttons frame
+        button_frame = ttk.Frame(self.form_frame)
+        button_frame.grid(row=current_row, column=0, columnspan=2, pady=(20, 0))
 
         self.search_button = ttk.Button(
-            self.form_frame,
+            button_frame,
             text="Find Colleges",
-            command=self.search_colleges,
-            style="primary.TButton",
+            command=lambda: self.search_colleges(),  # Wrap in lambda
+            style="primary",
             width=20
         )
-        self.search_button.pack(pady=(10, 0))
+        self.search_button.pack(side=tk.LEFT, padx=5)
+
+        self.clear_button = ttk.Button(
+            button_frame,
+            text="Clear Form",
+            command=self.clear_form,
+            style="secondary",
+            width=20
+        )
+        self.clear_button.pack(side=tk.LEFT, padx=5)
+
+        # Add form validation bindings
+        self.score_var.trace_add('write', self.validate_form)
+        self.budget_var.trace_add('write', self.validate_form)
+        self.exam_var.trace_add('write', self.validate_form)
+
 
     def create_results_area(self):
-        """Create the results display area."""
+        """Create the results display area with improved styling."""
         self.results_frame = ttk.LabelFrame(
             self.main_container,
             text="Recommended Colleges",
@@ -136,6 +178,18 @@ class CollegeRecommenderGUI:
 
         self.scrolled_frame = ScrolledFrame(self.results_frame, autohide=True)
         self.scrolled_frame.pack(fill=tk.BOTH, expand=True)
+
+    def create_status_bar(self):
+        """Create a status bar for displaying messages."""
+        self.status_var = tk.StringVar()
+        self.status_bar = ttk.Label(
+            self.root,
+            textvariable=self.status_var,
+            relief=tk.SUNKEN,
+            anchor=tk.W,
+            padding=(10, 5)
+        )
+        self.status_bar.pack(side=tk.BOTTOM, fill=tk.X)
 
     def populate_exam_types(self):
         """Populate exam types from database."""
@@ -147,104 +201,206 @@ class CollegeRecommenderGUI:
         except Exception as e:
             messagebox.showerror("Database Error", str(e))
 
-    def search_colleges(self):
-        """Search for colleges based on user input."""
-        try:
-            score = float(self.score_var.get())
-            budget = float(self.budget_var.get()) if self.budget_var.get() else None
-        except ValueError:
-            messagebox.showerror("Input Error", "Please enter valid numbers for score and budget.")
-            return
+    def validate_form(self, *args) -> bool:
+        """Validate form inputs and update UI accordingly."""
+        self.validation_errors = []
 
+        # Validate exam selection
+        if not self.exam_var.get():
+            self.validation_errors.append("Please select an exam")
+
+        # Validate score
+        try:
+            if not self.score_var.get():
+                self.validation_errors.append("Score is required")
+            else:
+                score = float(self.score_var.get())
+                # Remove the upper limit check since higher scores should be valid
+                if score < 0:
+                    self.validation_errors.append("Score must be greater than 0")
+        except ValueError:
+            self.validation_errors.append("Score must be a valid number")
+
+        # Validate budget (optional)
+        if self.budget_var.get():
+            try:
+                budget = float(self.budget_var.get())
+                if budget < 0:
+                    self.validation_errors.append("Budget cannot be negative")
+            except ValueError:
+                self.validation_errors.append("Budget must be a valid number")
+
+        # Update UI based on validation
+        self.form_valid = len(self.validation_errors) == 0
+
+        # Enable/disable search button
+        if self.form_valid:
+            self.search_button.configure(state="normal")
+            self.status_var.set("Ready to search")
+        else:
+            self.search_button.configure(state="disabled")
+            self.status_var.set(self.validation_errors[0])
+
+        self.logger.debug(f"Form validation: {'Valid' if self.form_valid else 'Invalid'}")
+        if self.validation_errors:
+            self.logger.debug(f"Validation errors: {self.validation_errors}")
+
+        return self.form_valid
+
+
+    def clear_form(self):
+        """Clear all form inputs."""
+        self.score_var.set("")
+        self.budget_var.set("")
+        self.category_var.set("General")
+        self.field_var.set("Engineering")
+        self.status_var.set("Form cleared")
+        self.clear_results()
+
+    def clear_results(self):
+        """Clear the results area."""
         for widget in self.scrolled_frame.winfo_children():
             widget.destroy()
 
+    def search_colleges(self, event=None):
+        """Search for colleges with improved error handling and debugging."""
+        self.logger.debug("Search colleges function called")
+
+        # Validate form again just to be safe
+        if not self.validate_form():
+            self.logger.debug("Form validation failed")
+            messagebox.showerror("Input Error", "\n".join(self.validation_errors))
+            return
+
+        self.status_var.set("Searching...")
+        self.root.update_idletasks()
+        self.clear_results()
+
         try:
+            # Get form values
+            exam_name = self.exam_var.get()
+            field = self.field_var.get()
+            category = self.category_var.get()
+            score = float(self.score_var.get())
+            budget = float(self.budget_var.get()) if self.budget_var.get() else None
+
+            self.logger.debug(f"""Search parameters:
+                Exam: {exam_name}
+                Field: {field}
+                Category: {category}
+                Score: {score}
+                Budget: {budget}""")
+
+            # Call database search
             colleges = self.db_manager.search_colleges(
-                exam_name=self.exam_var.get(),
-                field=self.field_var.get(),
-                category=self.category_var.get(),
+                exam_name=exam_name,
+                field=field,
+                category=category,
                 score=score,
                 budget=budget
             )
 
+            self.logger.debug(f"Found {len(colleges) if colleges else 0} colleges")
+
             if not colleges:
                 no_results_label = ttk.Label(
                     self.scrolled_frame,
-                    text="No colleges found matching your criteria.",
-                    font=("Helvetica", 12)
+                    text="No colleges found matching your criteria.\nTry adjusting your score or budget criteria.",
+                    font=("Helvetica", 12),
+                    justify="center"
                 )
                 no_results_label.pack(pady=20)
+                self.status_var.set("No colleges found")
                 return
 
+            # Sort colleges by cutoff score in descending order
+            colleges.sort(key=lambda x: x.cutoff_score, reverse=True)
+
+            # Display results
             for college in colleges:
-                self.create_college_card(college)
+                if score >= college.cutoff_score:  # Only show colleges where the student's score meets or exceeds the cutoff
+                    self.create_college_card(college)
+                    self.logger.debug(f"Created card for college: {college.name}")
+
+            self.status_var.set(f"Found {len(colleges)} matching colleges")
 
         except Exception as e:
-            messagebox.showerror("Database Error", str(e))
+            self.logger.error(f"Error during college search: {str(e)}", exc_info=True)
+            messagebox.showerror("Error", f"An error occurred while searching: {str(e)}")
+            self.status_var.set("Search failed")
+
+
 
     def create_college_card(self, college: College):
-        """Create a card-style display for a college."""
-        card = ttk.Frame(self.scrolled_frame, style="Card.TFrame")
+        """Create a card-style display for a college with improved styling."""
+        card = ttk.Frame(
+            self.scrolled_frame,
+            style="Card.TFrame"
+        )
         card.pack(fill=tk.X, pady=5, padx=5)
 
+        # College name
+        name_frame = ttk.Frame(card)
+        name_frame.pack(fill=tk.X, pady=(10, 5), padx=10)
+
         name_label = ttk.Label(
-            card,
+            name_frame,
             text=college.name,
             font=("Helvetica", 14, "bold")
         )
-        name_label.pack(anchor=tk.W, pady=(10, 5), padx=10)
+        name_label.pack(side=tk.LEFT)
 
+        # Details section with grid layout
         details_frame = ttk.Frame(card)
         details_frame.pack(fill=tk.X, padx=10, pady=(0, 10))
 
-        location_frame = ttk.Frame(details_frame)
-        location_frame.pack(fill=tk.X)
+        # Using grid for better alignment
+        current_row = 0
+
+        # Location
         ttk.Label(
-            location_frame,
+            details_frame,
             text="Location:",
             font=("Helvetica", 10, "bold")
-        ).pack(side=tk.LEFT)
+        ).grid(row=current_row, column=0, sticky='w')
         ttk.Label(
-            location_frame,
+            details_frame,
             text=college.location
-        ).pack(side=tk.LEFT, padx=(5, 0))
+        ).grid(row=current_row, column=1, sticky='w', padx=(5, 20))
 
-        field_frame = ttk.Frame(details_frame)
-        field_frame.pack(fill=tk.X)
+        # Field
         ttk.Label(
-            field_frame,
+            details_frame,
             text="Field:",
             font=("Helvetica", 10, "bold")
-        ).pack(side=tk.LEFT)
+        ).grid(row=current_row, column=2, sticky='w')
         ttk.Label(
-            field_frame,
+            details_frame,
             text=college.field
-        ).pack(side=tk.LEFT, padx=(5, 0))
+        ).grid(row=current_row, column=3, sticky='w', padx=(5, 0))
+        current_row += 1
 
-        cutoff_frame = ttk.Frame(details_frame)
-        cutoff_frame.pack(fill=tk.X)
+        # Cutoff Score
         ttk.Label(
-            cutoff_frame,
+            details_frame,
             text="Cutoff Score:",
             font=("Helvetica", 10, "bold")
-        ).pack(side=tk.LEFT)
+        ).grid(row=current_row, column=0, sticky='w')
         ttk.Label(
-            cutoff_frame,
+            details_frame,
             text=f"{college.cutoff_score:.2f}"
-        ).pack(side=tk.LEFT, padx=(5, 0))
+        ).grid(row=current_row, column=1, sticky='w', padx=(5, 20))
 
-        fee_frame = ttk.Frame(details_frame)
-        fee_frame.pack(fill=tk.X)
+        # Tuition Fee
         ttk.Label(
-            fee_frame,
+            details_frame,
             text="Annual Tuition Fee:",
             font=("Helvetica", 10, "bold")
-        ).pack(side=tk.LEFT)
+        ).grid(row=current_row, column=2, sticky='w')
         ttk.Label(
-            fee_frame,
+            details_frame,
             text=f"₹{college.tuition_fee:,.2f}"
-        ).pack(side=tk.LEFT, padx=(5, 0))
+        ).grid(row=current_row, column=3, sticky='w', padx=(5, 0))
 
         ttk.Separator(self.scrolled_frame).pack(fill=tk.X, pady=5)
 
