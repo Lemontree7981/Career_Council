@@ -24,11 +24,15 @@ class CollegeRecommenderGUI:
         self.form_valid = False
         self.validation_errors = []
 
+        # Add state variable for storing current search results
+        self.current_results = []
+
         self.main_container = ttk.Frame(self.root, padding="20")
         self.main_container.pack(fill=tk.BOTH, expand=True)
 
         self.create_header()
         self.create_input_form()
+        self.create_search_bar()  # New search bar
         self.create_results_area()
         self.create_status_bar()
         self.populate_exam_types()
@@ -166,6 +170,137 @@ class CollegeRecommenderGUI:
         self.budget_var.trace_add('write', self.validate_form)
         self.exam_var.trace_add('write', self.validate_form)
 
+    def create_search_bar(self):
+        """Create a search bar for filtering college results."""
+        search_frame = ttk.Frame(self.main_container)
+        search_frame.pack(fill=tk.X, pady=(0, 10))
+
+        # Search icon and entry field in a single frame
+        search_input_frame = ttk.Frame(search_frame)
+        search_input_frame.pack(fill=tk.X)
+
+        # Search icon (you can replace this with an actual icon if available)
+        search_icon = ttk.Label(search_input_frame, text="🔍")
+        search_icon.pack(side=tk.LEFT, padx=(0, 5))
+
+        # Search entry
+        self.search_var = tk.StringVar()
+        self.search_entry = ttk.Entry(
+            search_input_frame,
+            textvariable=self.search_var,
+            width=50,
+            style="primary"
+        )
+        self.search_entry.pack(side=tk.LEFT, fill=tk.X, expand=True)
+
+        # Add placeholder text
+        self.search_entry.insert(0, "Search colleges by name or location...")
+        self.search_entry.bind('<FocusIn>', self._on_search_focus_in)
+        self.search_entry.bind('<FocusOut>', self._on_search_focus_out)
+
+        # Bind search functionality
+        self.search_var.trace_add('write', self._on_search_change)
+
+    def _on_search_focus_in(self, event):
+        """Handle search entry focus in event."""
+        if self.search_entry.get() == "Search colleges by name or location...":
+            self.search_entry.delete(0, tk.END)
+
+    def _on_search_focus_out(self, event):
+        """Handle search entry focus out event."""
+        if not self.search_entry.get():
+            self.search_entry.insert(0, "Search colleges by name or location...")
+
+    def _on_search_change(self, *args):
+        """Filter college results based on search text."""
+        search_text = self.search_var.get().lower()
+
+        # Skip filtering if it's the placeholder text
+        if search_text == "search colleges by name or location...":
+            return
+
+        # Clear existing results
+        self.clear_results()
+
+        if not self.current_results:
+            return
+
+        # Filter and display matching colleges
+        for college in self.current_results:
+            if (search_text in college.name.lower() or
+                    search_text in college.location.lower()):
+                self.create_college_card(college)
+
+    def search_colleges(self, event=None):
+        self.logger.debug("Search colleges function called")
+
+        # Validate form again just to be safe
+        if not self.validate_form():
+            self.logger.debug("Form validation failed")
+            messagebox.showerror("Input Error", "\n".join(self.validation_errors))
+            return
+
+        self.status_var.set("Searching...")
+        self.root.update_idletasks()
+        self.clear_results()
+
+        try:
+            # Get form values
+            exam_name = self.exam_var.get()
+            field = self.field_var.get()
+            category = self.category_var.get()
+            score = float(self.score_var.get())
+            budget = float(self.budget_var.get()) if self.budget_var.get() else None
+
+            self.logger.debug(f"""Search parameters:
+                Exam: {exam_name}
+                Field: {field}
+                Category: {category}
+                Score: {score}
+                Budget: {budget}""")
+
+            # Call database search
+            colleges = self.db_manager.search_colleges(
+                exam_name=exam_name,
+                field=field,
+                category=category,
+                score=score,
+                budget=budget
+            )
+
+            self.logger.debug(f"Found {len(colleges) if colleges else 0} colleges")
+
+            if not colleges:
+                no_results_label = ttk.Label(
+                    self.scrolled_frame,
+                    text="No colleges found matching your criteria.\nTry adjusting your score or budget criteria.",
+                    font=("Helvetica", 12),
+                    justify="center"
+                )
+                no_results_label.pack(pady=20)
+                self.status_var.set("No colleges found")
+                self.current_results = []  # Clear current results
+                return
+
+            # Sort colleges by cutoff score in descending order
+            colleges.sort(key=lambda x: x.cutoff_score, reverse=True)
+
+            # Store current results for search filtering
+            self.current_results = [c for c in colleges if score >= c.cutoff_score]
+
+            # Display results
+            for college in self.current_results:
+                self.create_college_card(college)
+                self.logger.debug(f"Created card for college: {college.name}")
+
+            self.status_var.set(f"Found {len(self.current_results)} matching colleges")
+
+        except Exception as e:
+            self.logger.error(f"Error during college search: {str(e)}", exc_info=True)
+            messagebox.showerror("Error", f"An error occurred while searching: {str(e)}")
+            self.status_var.set("Search failed")
+            self.current_results = []  # Clear current results
+
 
     def create_results_area(self):
         """Create the results display area with improved styling."""
@@ -254,83 +389,16 @@ class CollegeRecommenderGUI:
         self.budget_var.set("")
         self.category_var.set("General")
         self.field_var.set("Engineering")
+        self.search_var.set("")  # Clear search field
+        self._on_search_focus_out(None)  # Restore placeholder
         self.status_var.set("Form cleared")
         self.clear_results()
+        self.current_results = []
 
     def clear_results(self):
-        """Clear the results area."""
-        for widget in self.scrolled_frame.winfo_children():
-            widget.destroy()
-
-    def search_colleges(self, event=None):
-        """Search for colleges with improved error handling and debugging."""
-        self.logger.debug("Search colleges function called")
-
-        # Validate form again just to be safe
-        if not self.validate_form():
-            self.logger.debug("Form validation failed")
-            messagebox.showerror("Input Error", "\n".join(self.validation_errors))
-            return
-
-        self.status_var.set("Searching...")
-        self.root.update_idletasks()
-        self.clear_results()
-
-        try:
-            # Get form values
-            exam_name = self.exam_var.get()
-            field = self.field_var.get()
-            category = self.category_var.get()
-            score = float(self.score_var.get())
-            budget = float(self.budget_var.get()) if self.budget_var.get() else None
-
-            self.logger.debug(f"""Search parameters:
-                Exam: {exam_name}
-                Field: {field}
-                Category: {category}
-                Score: {score}
-                Budget: {budget}""")
-
-            # Call database search
-            colleges = self.db_manager.search_colleges(
-                exam_name=exam_name,
-                field=field,
-                category=category,
-                score=score,
-                budget=budget
-            )
-
-            self.logger.debug(f"Found {len(colleges) if colleges else 0} colleges")
-
-            if not colleges:
-                no_results_label = ttk.Label(
-                    self.scrolled_frame,
-                    text="No colleges found matching your criteria.\nTry adjusting your score or budget criteria.",
-                    font=("Helvetica", 12),
-                    justify="center"
-                )
-                no_results_label.pack(pady=20)
-                self.status_var.set("No colleges found")
-                return
-
-            # Sort colleges by cutoff score in descending order
-            colleges.sort(key=lambda x: x.cutoff_score, reverse=True)
-
-            # Display results
-            for college in colleges:
-                if score >= college.cutoff_score:  # Only show colleges where the student's score meets or exceeds the cutoff
-                    self.create_college_card(college)
-                    self.logger.debug(f"Created card for college: {college.name}")
-
-            self.status_var.set(f"Found {len(colleges)} matching colleges")
-
-        except Exception as e:
-            self.logger.error(f"Error during college search: {str(e)}", exc_info=True)
-            messagebox.showerror("Error", f"An error occurred while searching: {str(e)}")
-            self.status_var.set("Search failed")
-
-
-
+            """Clear the results area."""
+            for widget in self.scrolled_frame.winfo_children():
+                widget.destroy()
     def create_college_card(self, college: College):
         """Create a card-style display for a college with improved styling."""
         card = ttk.Frame(
