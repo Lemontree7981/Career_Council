@@ -118,3 +118,5 @@ class DatabaseManager:
 
         except sqlite3.Error as e:
             raise Exception(f"Error searching colleges: {e}")
+
+
