@@ -1,485 +1,399 @@
-import logging
-import tkinter as tk
-from tkinter import ttk, messagebox
-import ttkbootstrap as ttk
-from ttkbootstrap.constants import *
-from ttkbootstrap.scrolled import ScrolledFrame
-from database_operations import DatabaseManager, College
 import sys
-from typing import Optional
-from decimal import Decimal
-import re
+import logging
+from PyQt6 import QtWidgets, QtGui, QtCore
+from PyQt6.QtWidgets import QMessageBox
+from PyQt6.QtCore import Qt
+from database_operations import DatabaseManager, College
 
 
-class CollegeRecommenderGUI:
+class ModernButton(QtWidgets.QPushButton):
+    def __init__(self, text, primary=True):
+        super().__init__(text)
+        self.setFixedHeight(40)
+        self.setCursor(QtGui.QCursor(Qt.CursorShape.PointingHandCursor))
+
+        # Modern styling
+        if primary:
+            self.setStyleSheet("""
+                QPushButton {
+                    background-color: #2563eb;
+                    color: white;
+                    border: none;
+                    border-radius: 8px;
+                    padding: 8px 16px;
+                    font-weight: bold;
+                    font-size: 14px;
+                }
+                QPushButton:hover {
+                    background-color: #1d4ed8;
+                }
+                QPushButton:pressed {
+                    background-color: #1e40af;
+                }
+            """)
+        else:
+            self.setStyleSheet("""
+                QPushButton {
+                    background-color: #f3f4f6;
+                    color: #4b5563;
+                    border: 1px solid #d1d5db;
+                    border-radius: 8px;
+                    padding: 8px 16px;
+                    font-weight: bold;
+                    font-size: 14px;
+                }
+                QPushButton:hover {
+                    background-color: #e5e7eb;
+                }
+                QPushButton:pressed {
+                    background-color: #d1d5db;
+                }
+            """)
+
+
+class ModernComboBox(QtWidgets.QComboBox):
     def __init__(self):
-        self.root = ttk.Window(themename="cosmo")
-        self.root.title("College Recommender System")
-        self.root.geometry("900x700")
-        self.root.minsize(800, 600)
+        super().__init__()
+        self.setFixedHeight(40)
+        self.setStyleSheet("""
+            QComboBox {
+                border: 1px solid #d1d5db;
+                border-radius: 8px;
+                padding: 8px 16px;
+                background-color: white;
+                font-size: 14px;
+            }
+            QComboBox:hover {
+                border-color: #2563eb;
+            }
+            QComboBox:drop-down {
+                border: none;
+                width: 30px;
+            }
+            QComboBox::down-arrow {
+                image: none;
+                border: none;
+            }
+        """)
 
+
+class ModernLineEdit(QtWidgets.QLineEdit):
+    def __init__(self, placeholder=""):
+        super().__init__()
+        self.setFixedHeight(40)
+        self.setPlaceholderText(placeholder)
+        self.setStyleSheet("""
+            QLineEdit {
+                border: 1px solid #d1d5db;
+                border-radius: 8px;
+                padding: 8px 16px;
+                background-color: white;
+                font-size: 14px;
+            }
+            QLineEdit:focus {
+                border-color: #2563eb;
+                outline: none;
+            }
+            QLineEdit::placeholder {
+                color: #9ca3af;
+            }
+        """)
+
+
+class CollegeRecommenderApp(QtWidgets.QMainWindow):
+    def __init__(self):
+        super().__init__()
+        self.font_family = QtWidgets.QApplication.instance().font().family()
         self.db_manager = DatabaseManager('career_counseling.db')
+        self.setWindowTitle("College Recommender System")
+        self.setGeometry(100, 100, 1200, 900)  # Increased window size
+        self.setStyleSheet("""
+            QMainWindow {
+                background-color: #f8fafc;
+            }
+            QLabel {
+                color: #1e293b;
+            }
+        """)
 
-        # Add state variables for form validation
-        self.form_valid = False
-        self.validation_errors = []
+        # Main container widget with margins
+        main_widget = QtWidgets.QWidget()
+        self.setCentralWidget(main_widget)
+        main_layout = QtWidgets.QVBoxLayout(main_widget)
+        main_layout.setContentsMargins(40, 40, 40, 40)
+        main_layout.setSpacing(30)
 
-        # Add state variable for storing current search results
-        self.current_results = []
+        # Header
+        header_container = QtWidgets.QWidget()
+        header_container.setStyleSheet("""
+            QWidget {
+                background-color: white;
+                border-radius: 16px;
+                box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+            }
+        """)
+        header_layout = QtWidgets.QVBoxLayout(header_container)
+        header_layout.setContentsMargins(30, 30, 30, 30)
 
-        self.main_container = ttk.Frame(self.root, padding="20")
-        self.main_container.pack(fill=tk.BOTH, expand=True)
+        header_label = QtWidgets.QLabel("College Recommender System")
+        header_label.setFont(QtGui.QFont(self.font_family, 32, QtGui.QFont.Weight.Bold))
+        header_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        header_label.setStyleSheet("color: #0f172a;")
+        header_layout.addWidget(header_label)
 
-        self.create_header()
-        self.create_input_form()
-        self.create_search_bar()  # New search bar
-        self.create_results_area()
-        self.create_status_bar()
-        self.populate_exam_types()
+        subtitle_label = QtWidgets.QLabel("Find the best colleges based on your exam scores")
+        subtitle_label.setFont(QtGui.QFont(self.font_family, 16))
+        subtitle_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        subtitle_label.setStyleSheet("color: #64748b;")
+        header_layout.addWidget(subtitle_label)
 
-        # Bind validation to form inputs
-        self.score_var.trace_add('write', self.validate_form)
-        self.budget_var.trace_add('write', self.validate_form)
+        main_layout.addWidget(header_container)
 
-        # Add keyboard shortcuts
-        self.root.bind('<Return>', lambda e: self.search_colleges())
-        self.root.bind('<Escape>', lambda e: self.clear_form())
-        logging.basicConfig(level=logging.DEBUG)
-        self.logger = logging.getLogger(__name__)
+        # Form container
+        form_container = QtWidgets.QWidget()
+        form_container.setStyleSheet("""
+            QWidget {
+                background-color: white;
+                border-radius: 16px;
+                box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+            }
+        """)
+        form_layout = QtWidgets.QVBoxLayout(form_container)
+        form_layout.setContentsMargins(30, 30, 30, 30)
+        form_layout.setSpacing(20)
 
-        # Initialize search button in disabled state
-        self.search_button.configure(state="disabled")
+        # Form grid
+        grid_layout = QtWidgets.QGridLayout()
+        grid_layout.setSpacing(20)
 
-    def create_header(self):
-        """Create the application header with improved styling."""
-        header_frame = ttk.Frame(self.main_container)
-        header_frame.pack(fill=tk.X, pady=(0, 20))
+        # Add form elements with labels
+        labels = ["Select Exam:", "Your Score:", "Category:", "Field:", "Max Budget (₹):"]
+        self.exam_combo = ModernComboBox()
+        self.exam_combo.addItems(self.db_manager.get_exam_types())
+        self.score_input = ModernLineEdit("Enter your score")
+        self.category_combo = ModernComboBox()
+        self.category_combo.addItems(["General", "OBC", "SC", "ST"])
+        self.field_combo = ModernComboBox()
+        self.field_combo.addItems(["Engineering", "Medicine", "Architecture"])
+        self.budget_input = ModernLineEdit("Enter maximum budget")
 
-        title = ttk.Label(
-            header_frame,
-            text="College Recommender System",
-            font=("Helvetica", 24, "bold")
-        )
-        title.pack()
+        widgets = [self.exam_combo, self.score_input, self.category_combo,
+                   self.field_combo, self.budget_input]
 
-        subtitle = ttk.Label(
-            header_frame,
-            text="Find the best colleges based on your exam scores",
-            font=("Helvetica", 12)
-        )
-        subtitle.pack()
+        for i, (label, widget) in enumerate(zip(labels, widgets)):
+            label_widget = QtWidgets.QLabel(label)
+            label_widget.setFont(QtGui.QFont(self.font_family, 12))
+            label_widget.setStyleSheet("color: #475569;")
+            grid_layout.addWidget(label_widget, i, 0)
+            grid_layout.addWidget(widget, i, 1)
 
-    def create_input_form(self):
-        """Create the input form section with improved layout and validation."""
-        self.form_frame = ttk.LabelFrame(
-            self.main_container,
-            text="Enter Your Details",
-            padding="20"
-        )
-        self.form_frame.pack(fill=tk.X, pady=(0, 20))
+        form_layout.addLayout(grid_layout)
 
-        # Create grid layout for better alignment
-        current_row = 0
+        # Buttons layout
+        button_layout = QtWidgets.QHBoxLayout()
+        button_layout.setSpacing(15)
 
-        # Exam selection
-        ttk.Label(self.form_frame, text="Select Exam:").grid(row=current_row, column=0, sticky='w', pady=5)
-        self.exam_var = tk.StringVar()
-        self.exam_combobox = ttk.Combobox(
-            self.form_frame,
-            textvariable=self.exam_var,
-            state="readonly",
-            width=30
-        )
-        self.exam_combobox.grid(row=current_row, column=1, sticky='w', padx=(10, 0), pady=5)
-        current_row += 1
+        self.search_button = ModernButton("Find Colleges", primary=True)
+        self.search_button.clicked.connect(self.search_colleges)
 
-        # Score entry with validation
-        ttk.Label(self.form_frame, text="Your Score:").grid(row=current_row, column=0, sticky='w', pady=5)
-        self.score_var = tk.StringVar()
-        self.score_entry = ttk.Entry(
-            self.form_frame,
-            textvariable=self.score_var,
-            width=32
-        )
-        self.score_entry.grid(row=current_row, column=1, sticky='w', padx=(10, 0), pady=5)
-        current_row += 1
+        self.clear_button = ModernButton("Clear Form", primary=False)
+        self.clear_button.clicked.connect(self.clear_form)
 
-        # Category selection
-        ttk.Label(self.form_frame, text="Category:").grid(row=current_row, column=0, sticky='w', pady=5)
-        self.category_var = tk.StringVar(value="General")
-        categories = ["General", "OBC", "SC", "ST"]
-        self.category_combobox = ttk.Combobox(
-            self.form_frame,
-            textvariable=self.category_var,
-            values=categories,
-            state="readonly",
-            width=30
-        )
-        self.category_combobox.grid(row=current_row, column=1, sticky='w', padx=(10, 0), pady=5)
-        current_row += 1
+        button_layout.addWidget(self.search_button)
+        button_layout.addWidget(self.clear_button)
+        form_layout.addLayout(button_layout)
 
-        # Field selection
-        ttk.Label(self.form_frame, text="Field:").grid(row=current_row, column=0, sticky='w', pady=5)
-        self.field_var = tk.StringVar(value="Engineering")
-        fields = ["Engineering", "Medicine", "Architecture"]
-        self.field_combobox = ttk.Combobox(
-            self.form_frame,
-            textvariable=self.field_var,
-            values=fields,
-            state="readonly",
-            width=30
-        )
-        self.field_combobox.grid(row=current_row, column=1, sticky='w', padx=(10, 0), pady=5)
-        current_row += 1
+        main_layout.addWidget(form_container)
 
-        # Budget entry with validation
-        ttk.Label(self.form_frame, text="Max Budget (₹):").grid(row=current_row, column=0, sticky='w', pady=5)
-        self.budget_var = tk.StringVar()
-        self.budget_entry = ttk.Entry(
-            self.form_frame,
-            textvariable=self.budget_var,
-            width=32
-        )
-        self.budget_entry.grid(row=current_row, column=1, sticky='w', padx=(10, 0), pady=5)
-        current_row += 1
+        # Search bar for filtering results
+        search_container = QtWidgets.QWidget()
+        search_container.setStyleSheet("""
+            QWidget {
+                background-color: white;
+                border-radius: 16px;
+                box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+            }
+        """)
+        search_layout = QtWidgets.QHBoxLayout(search_container)
+        search_layout.setContentsMargins(20, 20, 20, 20)
 
-        # Buttons frame
-        button_frame = ttk.Frame(self.form_frame)
-        button_frame.grid(row=current_row, column=0, columnspan=2, pady=(20, 0))
+        self.search_input = ModernLineEdit("Search colleges by name or location...")
+        self.search_input.textChanged.connect(self.filter_results)
+        search_layout.addWidget(self.search_input)
 
-        self.search_button = ttk.Button(
-            button_frame,
-            text="Find Colleges",
-            command=lambda: self.search_colleges(),  # Wrap in lambda
-            style="primary",
-            width=20
-        )
-        self.search_button.pack(side=tk.LEFT, padx=5)
+        main_layout.addWidget(search_container)
 
-        self.clear_button = ttk.Button(
-            button_frame,
-            text="Clear Form",
-            command=self.clear_form,
-            style="secondary",
-            width=20
-        )
-        self.clear_button.pack(side=tk.LEFT, padx=5)
+        # Results area
+        self.results_area = QtWidgets.QTextEdit()
+        self.results_area.setReadOnly(True)
+        self.results_area.setStyleSheet("""
+            QTextEdit {
+                background-color: white;
+                border: none;
+                border-radius: 16px;
+                padding: 20px;
+                font-size: 14px;
+                line-height: 1.6;
+                box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+            }
+        """)
+        main_layout.addWidget(self.results_area)
 
-        # Add form validation bindings
-        self.score_var.trace_add('write', self.validate_form)
-        self.budget_var.trace_add('write', self.validate_form)
-        self.exam_var.trace_add('write', self.validate_form)
+        # Store the full results for filtering
+        self.current_colleges = []
 
-    def create_search_bar(self):
-        """Create a search bar for filtering college results."""
-        search_frame = ttk.Frame(self.main_container)
-        search_frame.pack(fill=tk.X, pady=(0, 10))
+        # Status bar
+        self.statusBar().setStyleSheet("""
+            QStatusBar {
+                background-color: white;
+                color: #64748b;
+                padding: 8px;
+                font-size: 13px;
+            }
+        """)
+        self.statusBar().showMessage("Ready to search")
 
-        # Search icon and entry field in a single frame
-        search_input_frame = ttk.Frame(search_frame)
-        search_input_frame.pack(fill=tk.X)
+    def filter_results(self):
+        search_text = self.search_input.text().lower()
+        filtered_colleges = [
+            college for college in self.current_colleges
+            if search_text in college.name.lower() or
+               search_text in college.location.lower()
+        ]
+        self.display_colleges(filtered_colleges)
 
-        # Search icon (you can replace this with an actual icon if available)
-        search_icon = ttk.Label(search_input_frame, text="🔍")
-        search_icon.pack(side=tk.LEFT, padx=(0, 5))
+    def display_colleges(self, colleges):
+        results_html = """
+            <style>
+                .college-card {
+                    background-color: #f8fafc;
+                    border-radius: 12px;
+                    padding: 25px;
+                    margin-bottom: 25px;
+                    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+                    transition: transform 0.2s, box-shadow 0.2s;
+                }
+                .college-card:hover {
+                    transform: translateY(-2px);
+                    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+                }
+                .college-name {
+                    font-size: 20px;
+                    font-weight: bold;
+                    color: #0f172a;
+                    margin-bottom: 12px;
+                    border-bottom: 2px solid #e2e8f0;
+                    padding-bottom: 8px;
+                }
+                .college-info {
+                    color: #475569;
+                    margin: 8px 0;
+                    font-size: 15px;
+                    display: flex;
+                    align-items: center;
+                    gap: 8px;
+                }
+                .badge {
+                    display: inline-block;
+                    padding: 4px 8px;
+                    border-radius: 6px;
+                    font-size: 13px;
+                    font-weight: 500;
+                    background-color: #e2e8f0;
+                    color: #475569;
+                    margin-right: 8px;
+                }
+            </style>
+        """
 
-        # Search entry
-        self.search_var = tk.StringVar()
-        self.search_entry = ttk.Entry(
-            search_input_frame,
-            textvariable=self.search_var,
-            width=50,
-            style="primary"
-        )
-        self.search_entry.pack(side=tk.LEFT, fill=tk.X, expand=True)
+        for college in colleges:
+            results_html += f"""
+                <div class='college-card'>
+                    <div class='college-name'>{college.name}</div>
+                    <div class='college-info'>
+                        <span class='badge'>Location</span>
+                        📍 {college.location}
+                    </div>
+                    <div class='college-info'>
+                        <span class='badge'>Field</span>
+                        🎓 {college.field}
+                    </div>
+                    <div class='college-info'>
+                        <span class='badge'>Cutoff Score</span>
+                        📊 {college.cutoff_score:.2f}
+                    </div>
+                    <div class='college-info'>
+                        <span class='badge'>Annual Fee</span>
+                        💰 ₹{college.tuition_fee:,.2f}
+                    </div>
+                </div>
+            """
 
-        # Add placeholder text
-        self.search_entry.insert(0, "Search colleges by name or location...")
-        self.search_entry.bind('<FocusIn>', self._on_search_focus_in)
-        self.search_entry.bind('<FocusOut>', self._on_search_focus_out)
+        self.results_area.setHtml(results_html)
 
-        # Bind search functionality
-        self.search_var.trace_add('write', self._on_search_change)
-
-    def _on_search_focus_in(self, event):
-        """Handle search entry focus in event."""
-        if self.search_entry.get() == "Search colleges by name or location...":
-            self.search_entry.delete(0, tk.END)
-
-    def _on_search_focus_out(self, event):
-        """Handle search entry focus out event."""
-        if not self.search_entry.get():
-            self.search_entry.insert(0, "Search colleges by name or location...")
-
-    def _on_search_change(self, *args):
-        """Filter college results based on search text."""
-        search_text = self.search_var.get().lower()
-
-        # Skip filtering if it's the placeholder text
-        if search_text == "search colleges by name or location...":
-            return
-
-        # Clear existing results
-        self.clear_results()
-
-        if not self.current_results:
-            return
-
-        # Filter and display matching colleges
-        for college in self.current_results:
-            if (search_text in college.name.lower() or
-                    search_text in college.location.lower()):
-                self.create_college_card(college)
-
-    def search_colleges(self, event=None):
-        self.logger.debug("Search colleges function called")
-
-        # Validate form again just to be safe
-        if not self.validate_form():
-            self.logger.debug("Form validation failed")
-            messagebox.showerror("Input Error", "\n".join(self.validation_errors))
-            return
-
-        self.status_var.set("Searching...")
-        self.root.update_idletasks()
-        self.clear_results()
-
+    def search_colleges(self):
         try:
-            # Get form values
-            exam_name = self.exam_var.get()
-            field = self.field_var.get()
-            category = self.category_var.get()
-            score = float(self.score_var.get())
-            budget = float(self.budget_var.get()) if self.budget_var.get() else None
+            exam = self.exam_combo.currentText()
+            score = float(self.score_input.text())
+            category = self.category_combo.currentText()
+            field = self.field_combo.currentText()
+            budget = float(self.budget_input.text()) if self.budget_input.text() else None
 
-            self.logger.debug(f"""Search parameters:
-                Exam: {exam_name}
-                Field: {field}
-                Category: {category}
-                Score: {score}
-                Budget: {budget}""")
+            logging.debug(f"Exam: {exam}, Field: {field}, Category: {category}, Score: {score}, Budget: {budget}")
 
-            # Call database search
             colleges = self.db_manager.search_colleges(
-                exam_name=exam_name,
+                exam_name=exam,
                 field=field,
                 category=category,
                 score=score,
                 budget=budget
             )
 
-            self.logger.debug(f"Found {len(colleges) if colleges else 0} colleges")
-
+            self.results_area.clear()
             if not colleges:
-                no_results_label = ttk.Label(
-                    self.scrolled_frame,
-                    text="No colleges found matching your criteria.\nTry adjusting your score or budget criteria.",
-                    font=("Helvetica", 12),
-                    justify="center"
-                )
-                no_results_label.pack(pady=20)
-                self.status_var.set("No colleges found")
-                self.current_results = []  # Clear current results
+                QMessageBox.information(self, "No Results", "No colleges found matching your criteria.")
+                self.statusBar().showMessage("No colleges found")
                 return
 
-            # Sort colleges by cutoff score in descending order
-            colleges.sort(key=lambda x: x.cutoff_score, reverse=True)
+            self.current_colleges = colleges
+            self.display_colleges(colleges)
+            self.statusBar().showMessage(f"Found {len(colleges)} colleges matching your criteria")
 
-            # Store current results for search filtering
-            self.current_results = [c for c in colleges if score >= c.cutoff_score]
-
-            # Display results
-            for college in self.current_results:
-                self.create_college_card(college)
-                self.logger.debug(f"Created card for college: {college.name}")
-
-            self.status_var.set(f"Found {len(self.current_results)} matching colleges")
-
-        except Exception as e:
-            self.logger.error(f"Error during college search: {str(e)}", exc_info=True)
-            messagebox.showerror("Error", f"An error occurred while searching: {str(e)}")
-            self.status_var.set("Search failed")
-            self.current_results = []  # Clear current results
-
-
-    def create_results_area(self):
-        """Create the results display area with improved styling."""
-        self.results_frame = ttk.LabelFrame(
-            self.main_container,
-            text="Recommended Colleges",
-            padding="20"
-        )
-        self.results_frame.pack(fill=tk.BOTH, expand=True)
-
-        self.scrolled_frame = ScrolledFrame(self.results_frame, autohide=True)
-        self.scrolled_frame.pack(fill=tk.BOTH, expand=True)
-
-    def create_status_bar(self):
-        """Create a status bar for displaying messages."""
-        self.status_var = tk.StringVar()
-        self.status_bar = ttk.Label(
-            self.root,
-            textvariable=self.status_var,
-            relief=tk.SUNKEN,
-            anchor=tk.W,
-            padding=(10, 5)
-        )
-        self.status_bar.pack(side=tk.BOTTOM, fill=tk.X)
-
-    def populate_exam_types(self):
-        """Populate exam types from database."""
-        try:
-            exams = self.db_manager.get_exam_types()
-            self.exam_combobox['values'] = exams
-            if exams:
-                self.exam_combobox.set(exams[0])
-        except Exception as e:
-            messagebox.showerror("Database Error", str(e))
-
-    def validate_form(self, *args) -> bool:
-        """Validate form inputs and update UI accordingly."""
-        self.validation_errors = []
-
-        # Validate exam selection
-        if not self.exam_var.get():
-            self.validation_errors.append("Please select an exam")
-
-        # Validate score
-        try:
-            if not self.score_var.get():
-                self.validation_errors.append("Score is required")
-            else:
-                score = float(self.score_var.get())
-                # Remove the upper limit check since higher scores should be valid
-                if score < 0:
-                    self.validation_errors.append("Score must be greater than 0")
         except ValueError:
-            self.validation_errors.append("Score must be a valid number")
-
-        # Validate budget (optional)
-        if self.budget_var.get():
-            try:
-                budget = float(self.budget_var.get())
-                if budget < 0:
-                    self.validation_errors.append("Budget cannot be negative")
-            except ValueError:
-                self.validation_errors.append("Budget must be a valid number")
-
-        # Update UI based on validation
-        self.form_valid = len(self.validation_errors) == 0
-
-        # Enable/disable search button
-        if self.form_valid:
-            self.search_button.configure(state="normal")
-            self.status_var.set("Ready to search")
-        else:
-            self.search_button.configure(state="disabled")
-            self.status_var.set(self.validation_errors[0])
-
-        self.logger.debug(f"Form validation: {'Valid' if self.form_valid else 'Invalid'}")
-        if self.validation_errors:
-            self.logger.debug(f"Validation errors: {self.validation_errors}")
-
-        return self.form_valid
-
+            QMessageBox.warning(self, "Input Error", "Please enter valid numerical values for score and budget.")
+        except Exception as e:
+            logging.error(f"Error during college search: {e}")
+            QMessageBox.critical(self, "Error", f"An error occurred: {e}")
+            self.statusBar().showMessage("Search failed")
 
     def clear_form(self):
-        """Clear all form inputs."""
-        self.score_var.set("")
-        self.budget_var.set("")
-        self.category_var.set("General")
-        self.field_var.set("Engineering")
-        self.search_var.set("")  # Clear search field
-        self._on_search_focus_out(None)  # Restore placeholder
-        self.status_var.set("Form cleared")
-        self.clear_results()
-        self.current_results = []
-
-    def clear_results(self):
-            """Clear the results area."""
-            for widget in self.scrolled_frame.winfo_children():
-                widget.destroy()
-    def create_college_card(self, college: College):
-        """Create a card-style display for a college with improved styling."""
-        card = ttk.Frame(
-            self.scrolled_frame,
-            style="Card.TFrame"
-        )
-        card.pack(fill=tk.X, pady=5, padx=5)
-
-        # College name
-        name_frame = ttk.Frame(card)
-        name_frame.pack(fill=tk.X, pady=(10, 5), padx=10)
-
-        name_label = ttk.Label(
-            name_frame,
-            text=college.name,
-            font=("Helvetica", 14, "bold")
-        )
-        name_label.pack(side=tk.LEFT)
-
-        # Details section with grid layout
-        details_frame = ttk.Frame(card)
-        details_frame.pack(fill=tk.X, padx=10, pady=(0, 10))
-
-        # Using grid for better alignment
-        current_row = 0
-
-        # Location
-        ttk.Label(
-            details_frame,
-            text="Location:",
-            font=("Helvetica", 10, "bold")
-        ).grid(row=current_row, column=0, sticky='w')
-        ttk.Label(
-            details_frame,
-            text=college.location
-        ).grid(row=current_row, column=1, sticky='w', padx=(5, 20))
-
-        # Field
-        ttk.Label(
-            details_frame,
-            text="Field:",
-            font=("Helvetica", 10, "bold")
-        ).grid(row=current_row, column=2, sticky='w')
-        ttk.Label(
-            details_frame,
-            text=college.field
-        ).grid(row=current_row, column=3, sticky='w', padx=(5, 0))
-        current_row += 1
-
-        # Cutoff Score
-        ttk.Label(
-            details_frame,
-            text="Cutoff Score:",
-            font=("Helvetica", 10, "bold")
-        ).grid(row=current_row, column=0, sticky='w')
-        ttk.Label(
-            details_frame,
-            text=f"{college.cutoff_score:.2f}"
-        ).grid(row=current_row, column=1, sticky='w', padx=(5, 20))
-
-        # Tuition Fee
-        ttk.Label(
-            details_frame,
-            text="Annual Tuition Fee:",
-            font=("Helvetica", 10, "bold")
-        ).grid(row=current_row, column=2, sticky='w')
-        ttk.Label(
-            details_frame,
-            text=f"₹{college.tuition_fee:,.2f}"
-        ).grid(row=current_row, column=3, sticky='w', padx=(5, 0))
-
-        ttk.Separator(self.scrolled_frame).pack(fill=tk.X, pady=5)
+        self.exam_combo.setCurrentIndex(0)
+        self.score_input.clear()
+        self.category_combo.setCurrentIndex(0)
+        self.field_combo.setCurrentIndex(0)
+        self.budget_input.clear()
+        self.search_input.clear()
+        self.results_area.clear()
+        self.current_colleges = []
+        self.statusBar().showMessage("Form cleared")
 
 
 def main():
-    if len(sys.argv) != 2:
-        print("Access Denied: Please launch through the main app.")
-        return
-    token = sys.argv[1]
-    app = CollegeRecommenderGUI()
-    app.root.mainloop()
+    app = QtWidgets.QApplication(sys.argv)
+
+    # Set modern system fonts based on the operating system
+    if sys.platform.startswith('win'):  # Windows
+        default_font = QtGui.QFont('Segoe UI', 10)
+    elif sys.platform.startswith('darwin'):  # macOS
+        default_font = QtGui.QFont('SF Pro Display', 10)
+    else:  # Linux and others
+        default_font = QtGui.QFont('Ubuntu', 10)
+
+    app.setFont(default_font)
+
+    recommender = CollegeRecommenderApp()
+    recommender.show()
+    sys.exit(app.exec())
 
 
 if __name__ == "__main__":
