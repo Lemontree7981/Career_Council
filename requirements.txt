@@ -7,3 +7,4 @@ tkinter  # Built into Python, no need to install
 customtkinter>=5.1.0  # Modern-looking UI widgets
 ttkbootstrap>=1.10.1  # Bootstrap-styled themes for tkinter
 Pillow>=10.0.0  # Image processing library for Python
+PyQt6~=6.8.0
