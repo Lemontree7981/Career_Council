@@ -1,7 +1,3 @@
-# Core dependencies
-SQLite3  # Built into Python, no need to install
-sqlalchemy>=1.4.0  # SQL toolkit and ORM
-
 # User Interface
 tkinter  # Built into Python, no need to install
 customtkinter>=5.1.0  # Modern-looking UI widgets

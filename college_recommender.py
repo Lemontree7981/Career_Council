@@ -6,9 +6,6 @@ from ttkbootstrap.constants import *
 from ttkbootstrap.scrolled import ScrolledFrame
 from database_operations import DatabaseManager, College
 import sys
-from typing import Optional
-from decimal import Decimal
-import re
 
 
 class CollegeRecommenderGUI:
